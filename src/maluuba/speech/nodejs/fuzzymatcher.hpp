@@ -70,7 +70,7 @@ namespace nodejs
       auto isolate = exports->GetIsolate();
       v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
-      auto localClassName = v8::String::NewFromUtf8(isolate, className.data(), v8::String::kNormalString, className.length());
+      auto localClassName = v8::String::NewFromUtf8(isolate, className.data(), v8::NewStringType::kNormal, className.length()).ToLocalChecked();
       auto tpl = v8::FunctionTemplate::New(isolate, New);
       tpl->SetClassName(localClassName);
       tpl->InstanceTemplate()->SetInternalFieldCount(1);
@@ -83,7 +83,7 @@ namespace nodejs
       NODE_SET_PROTOTYPE_METHOD(tpl, "kNearestWithin", KNearestWithin);
 
       s_constructor.Reset(isolate, tpl->GetFunction(context).ToLocalChecked());
-      exports->Set(context, localClassName, tpl->GetFunction(context).ToLocalChecked());
+      exports->Set(context, localClassName, tpl->GetFunction(context).ToLocalChecked()).Check();
     }
 
     const Matcher& matcher() const
@@ -106,20 +106,20 @@ namespace nodejs
     static FuzzyMatcher<MatcherType>*
     make_fuzzy_matcher_hybrid(v8::Isolate* isolate, v8::Local<v8::Array> arg_targets, v8::Local<v8::Value> arg_distance, v8::Local<v8::Function> arg_extract)
     {
-
       v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
       speech::EnPronouncer pronouncer{};
       std::vector<Target> targets;
       const auto argc = 1;
       for (uint32_t i = 0; i < arg_targets->Length(); ++i) {
-        auto obj = arg_targets->Get(i);
+        auto obj = arg_targets->Get(context, i).ToLocalChecked();
         auto value = obj;
         if (!arg_extract.IsEmpty()) {
           v8::Local<v8::Value> argv[argc] = { obj };
           value = arg_extract->Call(context, v8::Null(isolate), argc, argv).ToLocalChecked();
         }
-        std::string phrase{*v8::String::Utf8Value{isolate, value}};
+        v8::String::Utf8Value utf8_value(isolate, value);
+        std::string phrase(*utf8_value);
         targets.emplace_back(NodeJsTarget(isolate, obj), phrase, pronouncer.pronounce(phrase));
       }
 
@@ -131,7 +131,8 @@ namespace nodejs
 
       auto to_target = [phonetic_weight_percentage{obj->distance().phonetic_weight_percentage()}](auto isolate, auto arg, auto& threshold_scale) {
         static speech::EnPronouncer pronouncer{};
-        std::string phrase{*v8::String::Utf8Value{isolate, arg}};
+        v8::String::Utf8Value utf8_value(isolate, arg);
+        std::string phrase(*utf8_value);
         auto pronunciation = pronouncer.pronounce(phrase);
 
         threshold_scale = phonetic_weight_percentage * pronunciation.size() + (1-phonetic_weight_percentage) * phrase.length();
@@ -150,13 +151,14 @@ namespace nodejs
       std::vector<Target> targets;
       const auto argc = 1;
       for (uint32_t i = 0; i < arg_targets->Length(); ++i) {
-        auto obj = arg_targets->Get(i);
+        auto obj = arg_targets->Get(context, i).ToLocalChecked();
         auto value = obj;
         if (!arg_extract.IsEmpty()) {
           v8::Local<v8::Value> argv[argc] = { obj };
-          value = arg_extract->Call(context, v8::Null(isolate), argc, argv).ToLocalChecked();;
+          value = arg_extract->Call(context, v8::Null(isolate), argc, argv).ToLocalChecked();
         }
-        std::string phrase{*v8::String::Utf8Value{isolate, value}};
+        v8::String::Utf8Value utf8_value(isolate, value);
+        std::string phrase(*utf8_value);
         targets.emplace_back(NodeJsTarget(isolate, obj), std::move(phrase));
       }
 
@@ -167,7 +169,8 @@ namespace nodejs
       };
 
       auto to_target = [](auto isolate, auto arg, auto& threshold_scale) {
-        std::string phrase{*v8::String::Utf8Value{isolate, arg}};
+        v8::String::Utf8Value utf8_value(isolate, arg);
+        std::string phrase(*utf8_value);
         threshold_scale = phrase.length() > 0 ? phrase.length() : 1;
         Target target(NodeJsTarget{}, std::move(phrase));
         return target;
@@ -184,13 +187,14 @@ namespace nodejs
       std::vector<Target> targets;
       const auto argc = 1;
       for (uint32_t i = 0; i < arg_targets->Length(); ++i) {
-        auto obj = arg_targets->Get(i);
+        auto obj = arg_targets->Get(context, i).ToLocalChecked();
         auto value = obj;
         if (!arg_extract.IsEmpty()) {
           v8::Local<v8::Value> argv[argc] = { obj };
-          value = arg_extract->Call(context, v8::Null(isolate), argc, argv).ToLocalChecked();;
+          value = arg_extract->Call(context, v8::Null(isolate), argc, argv).ToLocalChecked();
         }
-        std::string phrase{*v8::String::Utf8Value{isolate, value}};
+        v8::String::Utf8Value utf8_value(isolate, value);
+        std::string phrase(*utf8_value);
         targets.emplace_back(NodeJsTarget(isolate, obj), pronouncer.pronounce(phrase));
       }
 
@@ -202,7 +206,8 @@ namespace nodejs
 
       auto to_target = [](auto isolate, auto arg, auto& threshold_scale) {
         static speech::EnPronouncer pronouncer{};
-        std::string phrase{*v8::String::Utf8Value{isolate, arg}};
+        v8::String::Utf8Value utf8_value(isolate, arg);
+        std::string phrase(*utf8_value);
         auto pronunciation = pronouncer.pronounce(phrase);
         threshold_scale = pronunciation.size() > 0 ? pronunciation.size() : 1;
         Target target(NodeJsTarget{}, std::move(pronunciation));
@@ -219,7 +224,7 @@ namespace nodejs
       std::vector<Target> targets;
       const auto argc = 1;
       for (uint32_t i = 0; i < arg_targets->Length(); ++i) {
-        auto obj = arg_targets->Get(i);
+        auto obj = arg_targets->Get(context, i).ToLocalChecked();
         auto value = obj;
         if (!arg_extract.IsEmpty()) {
           v8::Local<v8::Value> argv[argc] = { obj };
@@ -255,24 +260,25 @@ namespace nodejs
     static void New(const v8::FunctionCallbackInfo<v8::Value>& args)
     {
       auto isolate = args.GetIsolate();
+      v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
       if (args.IsConstructCall()) {
         if (args.Length() < 2) {
           isolate->ThrowException(v8::Exception::TypeError(
-              v8::String::NewFromUtf8(isolate, "Expected at least 2 arguments.")));
+              v8::String::NewFromUtf8(isolate, "Expected at least 2 arguments.").ToLocalChecked()));
           return;
         }
 
         if (!args[0]->IsArray()) {
           isolate->ThrowException(v8::Exception::TypeError(
-              v8::String::NewFromUtf8(isolate, "Expected 'targets' argument to be an Object[].")));
+              v8::String::NewFromUtf8(isolate, "Expected 'targets' argument to be an Object[].").ToLocalChecked()));
           return;
         }
         v8::Local<v8::Function> arg_extract{};
         if (args.Length() > 2) {
           if (!args[2]->IsFunction()) {
             isolate->ThrowException(v8::Exception::TypeError(
-                v8::String::NewFromUtf8(isolate, "Expected 'extract' argument to be a Function.")));
+                v8::String::NewFromUtf8(isolate, "Expected 'extract' argument to be a Function.").ToLocalChecked()));
             return;
           }
           arg_extract = args[2].As<v8::Function>();
@@ -296,7 +302,7 @@ namespace nodejs
             // User provided JS distance function.
             if (!arg_distance->IsFunction()) {
               isolate->ThrowException(v8::Exception::TypeError(
-                  v8::String::NewFromUtf8(isolate, "Expected 'distance' argument to be a Function.")));
+                  v8::String::NewFromUtf8(isolate, "Expected 'distance' argument to be a Function.").ToLocalChecked()));
               return;
             }
             auto obj = make_fuzzy_matcher_js(isolate, arg_targets, arg_distance, arg_extract);
@@ -306,12 +312,12 @@ namespace nodejs
           args.GetReturnValue().Set(args.This());
         } catch (const std::exception& e) {
           isolate->ThrowException(v8::Exception::TypeError(
-              v8::String::NewFromUtf8(isolate, e.what())));
+              v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
           return;
         }
       } else {
         isolate->ThrowException(v8::Exception::SyntaxError(
-          v8::String::NewFromUtf8(isolate, "Not invoked as constructor, use `new`.")));
+          v8::String::NewFromUtf8(isolate, "Not invoked as constructor, use `new`.").ToLocalChecked()));
         return;
       }
     }
@@ -337,10 +343,11 @@ namespace nodejs
     static void Nearest(const v8::FunctionCallbackInfo<v8::Value>& args)
     {
       auto isolate = args.GetIsolate();
+      v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
       if (args.Length() < 1) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected 1 argument.")));
+            v8::String::NewFromUtf8(isolate, "Expected 1 argument.").ToLocalChecked()));
         return;
       }
 
@@ -354,7 +361,6 @@ namespace nodejs
         if (match) {
           speech::FuzzyMatcher<NodeJsTarget>::Match m(match->element().target, match->distance() / threshold_scale);
           auto wrap_match = new Match(std::move(m));
-          auto context = isolate->GetCurrentContext();
           const auto argc = 1;
           v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, wrap_match) };
           auto instance = Match::constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
@@ -364,7 +370,7 @@ namespace nodejs
         }
       } catch(const std::exception& e) {
         isolate->ThrowException(v8::Exception::Error(
-            v8::String::NewFromUtf8(isolate, e.what())));
+            v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
         return;
       }
     }
@@ -376,13 +382,13 @@ namespace nodejs
 
       if (args.Length() < 2) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected 2 arguments.")));
+            v8::String::NewFromUtf8(isolate, "Expected 2 arguments.").ToLocalChecked()));
         return;
       }
 
       if (!args[1]->IsNumber()) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected argument to be a number.")));
+            v8::String::NewFromUtf8(isolate, "Expected argument to be a number.").ToLocalChecked()));
         return;
       }
 
@@ -397,7 +403,6 @@ namespace nodejs
         if (match) {
           speech::FuzzyMatcher<NodeJsTarget>::Match m(match->element().target, match->distance() / threshold_scale);
           auto wrap_match = new Match(std::move(m));
-          auto context = isolate->GetCurrentContext();
           const auto argc = 1;
           v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, wrap_match) };
           auto instance = Match::constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
@@ -407,7 +412,7 @@ namespace nodejs
         }
       } catch(const std::exception& e) {
         isolate->ThrowException(v8::Exception::Error(
-            v8::String::NewFromUtf8(isolate, e.what())));
+            v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
         return;
       }
     }
@@ -419,13 +424,13 @@ namespace nodejs
 
       if (args.Length() < 2) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected 2 arguments.")));
+            v8::String::NewFromUtf8(isolate, "Expected 2 arguments.").ToLocalChecked()));
         return;
       }
 
       if (!args[1]->IsUint32()) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected argument to be an integer.")));
+            v8::String::NewFromUtf8(isolate, "Expected argument to be an integer.").ToLocalChecked()));
         return;
       }
 
@@ -437,7 +442,6 @@ namespace nodejs
       try {
         auto matches = obj->matcher().find_k_nearest(target, k);
 
-        auto context = isolate->GetCurrentContext();
         auto wrap_matches = v8::Array::New(isolate, matches.size());
         for (size_t i = 0; i < matches.size(); ++i) {
           speech::FuzzyMatcher<NodeJsTarget>::Match match(matches[i].element().target, matches[i].distance() / threshold_scale);
@@ -446,12 +450,12 @@ namespace nodejs
           const auto argc = 1;
           v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, wrap_match) };
           auto instance = Match::constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
-          wrap_matches->Set(i, instance);
+          wrap_matches->Set(context, i, instance).Check();
         }
         args.GetReturnValue().Set(wrap_matches);
       } catch(const std::exception& e) {
         isolate->ThrowException(v8::Exception::Error(
-            v8::String::NewFromUtf8(isolate, e.what())));
+            v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
         return;
       }
     }
@@ -463,18 +467,18 @@ namespace nodejs
 
       if (args.Length() < 3) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected 3 arguments.")));
+            v8::String::NewFromUtf8(isolate, "Expected 3 arguments.").ToLocalChecked()));
         return;
       }
 
       if (!args[1]->IsUint32()) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected argument to be an integer.")));
+            v8::String::NewFromUtf8(isolate, "Expected argument to be an integer.").ToLocalChecked()));
         return;
       }
       if (!args[2]->IsNumber()) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected argument to be a number.")));
+            v8::String::NewFromUtf8(isolate, "Expected argument to be a number.").ToLocalChecked()));
         return;
       }
 
@@ -487,7 +491,6 @@ namespace nodejs
       try {
         auto matches = obj->matcher().find_k_nearest_within(target, k, threshold);
 
-        auto context = isolate->GetCurrentContext();
         auto wrap_matches = v8::Array::New(isolate, matches.size());
         for (size_t i = 0; i < matches.size(); ++i) {
           speech::FuzzyMatcher<NodeJsTarget>::Match match(matches[i].element().target, matches[i].distance() / threshold_scale);
@@ -496,12 +499,12 @@ namespace nodejs
           const auto argc = 1;
           v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, wrap_match) };
           auto instance = Match::constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
-          wrap_matches->Set(i, instance);
+          wrap_matches->Set(context, i, instance).Check();
         }
         args.GetReturnValue().Set(wrap_matches);
       } catch(const std::exception& e) {
         isolate->ThrowException(v8::Exception::Error(
-            v8::String::NewFromUtf8(isolate, e.what())));
+            v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
         return;
       }
     }

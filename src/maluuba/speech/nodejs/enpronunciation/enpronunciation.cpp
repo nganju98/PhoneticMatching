@@ -19,18 +19,18 @@ namespace nodejs
       auto isolate = info.GetIsolate();
       auto obj = node::ObjectWrap::Unwrap<nodejs::EnPronunciation>(info.Holder());
       auto ipa = obj->pronunciation().to_ipa();
-      info.GetReturnValue().Set(v8::String::NewFromUtf8(isolate, ipa.data(), v8::String::kNormalString, ipa.length()));
+      info.GetReturnValue().Set(v8::String::NewFromUtf8(isolate, ipa.data(), v8::NewStringType::kNormal, ipa.length()).ToLocalChecked());
     }
 
     void
     getPhones(v8::Local<v8::String> property, const v8::PropertyCallbackInfo<v8::Value>& info)
     {
       auto isolate = info.GetIsolate();
+      v8::Local<v8::Context> context = isolate->GetCurrentContext();
       auto obj = node::ObjectWrap::Unwrap<nodejs::EnPronunciation>(info.Holder());
       const auto& phones = obj->pronunciation();
       auto array = v8::Array::New(isolate);
 
-      auto context = isolate->GetCurrentContext();
       std::size_t i = 0;
       for (const auto& phone : phones) {
         auto obj = new Phone(phone);
@@ -38,7 +38,7 @@ namespace nodejs
         const auto argc = 1;
         v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, obj) };
         auto instance = Phone::constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
-        array->Set(i++, instance);
+        array->Set(context, i++, instance).Check();
       }
       info.GetReturnValue().Set(array);
     }
@@ -48,7 +48,7 @@ namespace nodejs
     {
       auto isolate = info.GetIsolate();
       isolate->ThrowException(v8::Exception::Error(
-          v8::String::NewFromUtf8(isolate, "Object is immutable, setters not allowed.")));
+          v8::String::NewFromUtf8(isolate, "Object is immutable, setters not allowed.").ToLocalChecked()));
       return;
     }
   }
@@ -79,20 +79,20 @@ namespace nodejs
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
     auto tpl = v8::FunctionTemplate::New(isolate, New);
-    tpl->SetClassName(v8::String::NewFromUtf8(isolate, "EnPronunciation"));
+    tpl->SetClassName(v8::String::NewFromUtf8(isolate, "EnPronunciation").ToLocalChecked());
     tpl->InstanceTemplate()->SetInternalFieldCount(1);
-    tpl->InstanceTemplate()->SetAccessor(v8::String::NewFromUtf8(isolate, "ipa"), getIpa, setThrow);
-    tpl->InstanceTemplate()->SetAccessor(v8::String::NewFromUtf8(isolate, "phones"), getPhones, setThrow);
+    tpl->InstanceTemplate()->SetAccessor(v8::String::NewFromUtf8(isolate, "ipa").ToLocalChecked(), getIpa, setThrow);
+    tpl->InstanceTemplate()->SetAccessor(v8::String::NewFromUtf8(isolate, "phones").ToLocalChecked(), getPhones, setThrow);
 
     s_constructor.Reset(isolate, tpl->GetFunction(context).ToLocalChecked());
     s_type.Reset(isolate, tpl);
 
     auto otpl = v8::ObjectTemplate::New(isolate);
-    otpl->Set(v8::String::NewFromUtf8(isolate, "fromIpa"), v8::FunctionTemplate::New(isolate, FromIpa));
-    otpl->Set(v8::String::NewFromUtf8(isolate, "fromArpabet"), v8::FunctionTemplate::New(isolate, FromArpabet));
+    otpl->Set(v8::String::NewFromUtf8(isolate, "fromIpa").ToLocalChecked(), v8::FunctionTemplate::New(isolate, FromIpa));
+    otpl->Set(v8::String::NewFromUtf8(isolate, "fromArpabet").ToLocalChecked(), v8::FunctionTemplate::New(isolate, FromArpabet));
 
-    exports->Set(context, v8::String::NewFromUtf8(isolate, "EnPronunciation"),
-                otpl->NewInstance(context).ToLocalChecked());
+    exports->Set(context, v8::String::NewFromUtf8(isolate, "EnPronunciation").ToLocalChecked(),
+                otpl->NewInstance(context).ToLocalChecked()).Check();
   }
 
   void
@@ -102,7 +102,7 @@ namespace nodejs
 
     if (!args[0]->IsExternal()) {
       isolate->ThrowException(v8::Exception::TypeError(
-          v8::String::NewFromUtf8(isolate, "Expected use as EnPronunciation.fromIpa() or similar.")));
+          v8::String::NewFromUtf8(isolate, "Expected use as EnPronunciation.fromIpa() or similar.").ToLocalChecked()));
       return;
     }
 
@@ -117,16 +117,17 @@ namespace nodejs
   EnPronunciation::FromIpa(const v8::FunctionCallbackInfo<v8::Value>& args)
   {
     auto isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
     if (args.Length() < 1) {
       isolate->ThrowException(v8::Exception::TypeError(
-          v8::String::NewFromUtf8(isolate, "Expected 1 argument.")));
+          v8::String::NewFromUtf8(isolate, "Expected 1 argument.").ToLocalChecked()));
       return;
     }
 
     if (!args[0]->IsString()) {
       isolate->ThrowException(v8::Exception::TypeError(
-          v8::String::NewFromUtf8(isolate, "Expected argument to be a string.")));
+          v8::String::NewFromUtf8(isolate, "Expected argument to be a string.").ToLocalChecked()));
       return;
     }
 
@@ -137,12 +138,11 @@ namespace nodejs
 
       const auto argc = 1;
       v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, obj) };
-      auto context = isolate->GetCurrentContext();
       auto instance = constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
       args.GetReturnValue().Set(instance);
     } catch (const std::exception& e) {
       isolate->ThrowException(v8::Exception::Error(
-          v8::String::NewFromUtf8(isolate, e.what())));
+          v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
       return;
     }
   }
@@ -151,26 +151,27 @@ namespace nodejs
   EnPronunciation::FromArpabet(const v8::FunctionCallbackInfo<v8::Value>& args)
   {
     auto isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
     if (args.Length() < 1) {
       isolate->ThrowException(v8::Exception::TypeError(
-          v8::String::NewFromUtf8(isolate, "Expected 1 argument.")));
+          v8::String::NewFromUtf8(isolate, "Expected 1 argument.").ToLocalChecked()));
       return;
     }
 
     if (!args[0]->IsArray()) {
       isolate->ThrowException(v8::Exception::TypeError(
-          v8::String::NewFromUtf8(isolate, "Expected argument to be a string[].")));
+          v8::String::NewFromUtf8(isolate, "Expected argument to be a string[].").ToLocalChecked()));
       return;
     }
 
     auto array_arg = args[0].As<v8::Array>();
     std::vector<std::string> arpabet;
     for (uint32_t i = 0; i < array_arg->Length(); ++i) {
-      auto wrap_phoneme = array_arg->Get(i);
+      auto wrap_phoneme = array_arg->Get(context, i).ToLocalChecked();
       if (!wrap_phoneme->IsString()) {
         isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8(isolate, "Expected argument to be a string[].")));
+            v8::String::NewFromUtf8(isolate, "Expected argument to be a string[].").ToLocalChecked()));
         return;
       }
       v8::String::Utf8Value phoneme{isolate, wrap_phoneme};
@@ -183,12 +184,11 @@ namespace nodejs
 
       const auto argc = 1;
       v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, obj) };
-      auto context = isolate->GetCurrentContext();
       auto instance = constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
       args.GetReturnValue().Set(instance);
     } catch (const std::exception& e) {
       isolate->ThrowException(v8::Exception::Error(
-          v8::String::NewFromUtf8(isolate, e.what())));
+          v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
       return;
     }
   }

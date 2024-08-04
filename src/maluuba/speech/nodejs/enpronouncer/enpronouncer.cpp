@@ -26,19 +26,24 @@ namespace nodejs
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
     auto tpl = v8::FunctionTemplate::New(isolate, New);
-    tpl->SetClassName(v8::String::NewFromUtf8(isolate, "EnPronouncer"));
+    tpl->SetClassName(v8::String::NewFromUtf8(isolate, "EnPronouncer").ToLocalChecked());
     tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
     NODE_SET_PROTOTYPE_METHOD(tpl, "pronounce", Pronounce);
 
     s_constructor.Reset(isolate, tpl->GetFunction(context).ToLocalChecked());
-    exports->Set(context, v8::String::NewFromUtf8(isolate, "EnPronouncer"), tpl->GetFunction(context).ToLocalChecked());
+    exports->Set(
+        context,
+        v8::String::NewFromUtf8(isolate, "EnPronouncer").ToLocalChecked(),
+        tpl->GetFunction(context).ToLocalChecked()
+    ).Check();
   }
 
   void
   EnPronouncer::New(const v8::FunctionCallbackInfo<v8::Value>& args)
   {
     auto isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
     if (args.IsConstructCall()) {
       speech::EnPronouncer pronouncer{};
@@ -47,7 +52,7 @@ namespace nodejs
       args.GetReturnValue().Set(args.This());
     } else {
       isolate->ThrowException(v8::Exception::SyntaxError(
-        v8::String::NewFromUtf8(isolate, "Not invoked as constructor, change to: `new EnPronouncer()`")));
+        v8::String::NewFromUtf8(isolate, "Not invoked as constructor, change to: `new EnPronouncer()`").ToLocalChecked()));
       return;
     }
   }
@@ -56,16 +61,17 @@ namespace nodejs
   EnPronouncer::Pronounce(const v8::FunctionCallbackInfo<v8::Value>& args)
   {
     auto isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
     if (args.Length() < 1) {
       isolate->ThrowException(v8::Exception::TypeError(
-          v8::String::NewFromUtf8(isolate, "Expected 1 argument.")));
+          v8::String::NewFromUtf8(isolate, "Expected 1 argument.").ToLocalChecked()));
       return;
     }
 
     if (!args[0]->IsString()) {
       isolate->ThrowException(v8::Exception::TypeError(
-          v8::String::NewFromUtf8(isolate, "Expected argument to be a string.")));
+          v8::String::NewFromUtf8(isolate, "Expected argument to be a string.").ToLocalChecked()));
       return;
     }
 
@@ -77,12 +83,11 @@ namespace nodejs
       auto wrap = new EnPronunciation(std::move(pronunciation));
       const auto argc = 1;
       v8::Local<v8::Value> argv[argc] = { v8::External::New(isolate, wrap) };
-      auto context = isolate->GetCurrentContext();
       auto instance = EnPronunciation::constructor(isolate)->NewInstance(context, argc, argv).ToLocalChecked();
       args.GetReturnValue().Set(instance);
     } catch (const std::exception& e) {
       isolate->ThrowException(v8::Exception::Error(
-          v8::String::NewFromUtf8(isolate, e.what())));
+          v8::String::NewFromUtf8(isolate, e.what()).ToLocalChecked()));
       return;
     }
   }
